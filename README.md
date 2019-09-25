@@ -1,9 +1,10 @@
 # razin92_infra
 Репозиторий для работы над домашними заданиями в рамках курса **"DevOps практики и инструменты"**
 **Содрежание:**
-
+<a name="top"></a>
 1. [ДЗ 3 - Знакомство с облачной инфраструктурой](#hw3)
-2. [ДЗ 4 - Деплой тестового приложения ](#hw4)
+2. [ДЗ 4 - Деплой тестового приложения](#hw4)
+3. [ДЗ 5 - Сборка образов VM при помощи Packer](#hw5)
 ---
 <a name="hw3"></a> 
 # Домашнее задание 3
@@ -210,6 +211,7 @@ key-direction 1
 ```
 ---
 <a name="HW4"></a>
+[Содержание](#top)
 # Домашнее задание 4
 ## Деплой тестового приложения
 **Необходимые данные для проверки ДЗ**
@@ -337,7 +339,7 @@ puma -d
 ## Дополнительное задание 2
 **Создание правила брандмауэра удаленно средствами gcloud**
 ```
-gcloud compute --project=wise-cycling-253214 \
+gcloud compute --project=some-project-1234 \
 firewall-rules create puma-server \
 --direction=INGRESS \
 --priority=1000 \
@@ -350,9 +352,221 @@ firewall-rules create puma-server \
  # Указание проекта для создания правила
  # Имя правила
  # Напрвление трфика
+ # Приоритет правила
  # Сеть виртуальных машин
  # Действия брандмауэера
  # Порты
  # Сеть источника обращения
  # Теги
+```
+---
+<a name="hw5"></a>
+[Содержание](#top)
+# Домашнее задание 5
+## Сборка образов VM при помощи Packer
+[Репозиторий Packer'a](https://www.packer.io/downloads.html)
+
+Создание учетных данных для приложения в GCP
+```
+$ gcloud auth application-default login
+```
+Просмотр токена
+```
+$ gcloud auth application-default print-access-token
+```
+## Создание baked-образа
+Шаблон представлен в `.json`-файлах
+
+Пример параметров builders
+```
+{
+    "builders": [
+        {
+            "type": "googlecompute",
+            "project_id": "some-project-1234",
+            "image_name": "some-image-{{timestamp}}",
+            "image_family": "some-image",
+            "source_image_family": "ubuntu-1604-lts",
+            "zone": "europe-west1-b",
+            "ssh_username": "sshuser",
+            "machine_type": "f1-micro"
+        }
+    ]
+}
+```
+Пример параметров provisioners
+```
+# Описывает дополнительные действия по настройке необходимого окружения
+
+{
+    "provisioners": [
+        {
+            "type": "shell",
+            "script": "scripts/some_script.sh",
+            "execute_command": "sudo {{.Path}}"
+        }
+    ]
+}
+```
+Проверка шаблона Packer
+```
+$ packer validate ./some_template.json
+```
+Сборка образа
+```
+$ packer build some_template.json
+```
+После сборки образ доступен для установки из консоли управления GCP
+## Самостоятельные задания
+1. Пример шаблона, принимающий пользовательские переменные
+```
+{
+    "variables": {
+        "project_id": null,
+        "source_image_family": null,
+        "machine_type": "f1-micro",
+        "disk_type": "pd-standard",
+        "description": "OTUS edu image",
+        "network": "default"
+    },
+    "builders": [
+        {
+          "type": "googlecompute",
+          "project_id": "{{ user `project_id` }}",
+          "image_name": "reddit-base-{{timestamp}}",
+          "image_family": "reddit-base",
+          "source_image_family": "{{ user `source_image_family` }}",
+          "zone": "europe-west3-a",
+          "ssh_username": "appuser",
+          "machine_type": "{{ user `machine_type` }}",
+          "disk_size": 10,
+          "disk_type": "{{ user `disk_type` }}",
+          "image_description": "{{ user `description` }}",
+          "network": "{{ user `network` }}",
+          "tags": ["puma-server"]
+        }
+    ],
+    "provisioners": [
+        {
+          "type": "shell",
+          "script": "scripts/install_ruby.sh",
+          "execute_command": "sudo {{.Path}}"
+        },
+        {
+          "type": "shell",
+          "script": "scripts/install_mongodb.sh",
+          "execute_command": "sudo {{.Path}}"
+        }
+    ]
+}
+```
+Стоит отметить, что переменные без определенных значений по-умолчанию является отличным способом использовать секреты.
+
+2. Пример указания переменных в файле
+```
+{
+    "project_id": "some-project-1234",
+    "source_image_family": "ubuntu-1604-lts"
+}
+```
+Для использования переменных следует выполнять следующие команды
+```
+# Переменные без файла
+packer build -var "some_var_name=some_value" template.json
+
+# Переменные в отдельном файле
+packer buld -var-file="/path/to/variables.json" template.json
+
+```
+
+3. Дополнительные параметры шаблона для GCP VM
+
+Указаны в примере выше. Полный список доступен по [ссылке](https://www.packer.io/docs/builders/googlecompute.html#account_file)
+## Задания со *
+Подготовка скрипта установки приложения с запуском через systemctl
+
+`packer/files/deploy_puma.sh`
+
+```
+#! /bin/sh
+
+# Deploy Reddit App
+
+git clone -b monolith https://github.com/express42/reddit.git /etc/reddit/
+cd /etc/reddit && bundle install
+adduser puma --disabled-password --gecos ""
+
+# Startup Script
+
+mkdir /usr/local/puma
+wget https://gist.githubusercontent.com/razin92/06870f9eb9e448d3bde12b17113e2233/raw/244fbf48a49954c49967ca620d25eda99686bbad/start.sh -O /usr/local/puma/start.sh
+chmod +x /usr/local/puma/start.sh
+
+# Service Puma
+
+wget https://gist.githubusercontent.com/razin92/06870f9eb9e448d3bde12b17113e2233/raw/244fbf48a49954c49967ca620d25eda99686bbad/puma.service -O /etc/systemd/system/puma.service
+systemctl daemon-reload
+systemctl start puma
+systemctl enable puma
+```
+Скрипт запуска приложения для сервиса
+```
+#! /bin/sh
+
+# Puma startup script
+
+puma --dir /etc/reddit/
+```
+Cервис приложения Puma
+```
+[Unit]
+Description=Puma
+
+[Service]
+Type=simple
+User=puma
+Group=puma
+
+ExecStart=/usr/local/puma/start.sh
+ExecStop=/bin/kill -15 $MAINPID
+
+[Install]
+WantedBy=multi-user.target
+```
+Скрипт создания инстанса из ранее созданного образа
+```
+#! /bin/sh
+
+set -x
+
+project_id=$1
+instance_name=$2
+image_name=$3
+
+# Правило брандмауэра для работы приложения
+
+gcloud compute --project=$project_id \
+firewall-rules create puma-server \
+--direction=INGRESS \
+--priority=1000 \
+--network=default \
+--action=ALLOW \
+--rules=tcp:9292 \
+--source-ranges=0.0.0.0/0 \
+--target-tags=puma-server
+
+# Создания инстанса VM с конкретным образом
+
+gcloud compute instances create $instance_name \
+--project=$project_id \
+--boot-disk-size=10GB \
+--image=$image_name \
+--image-project=$project_id \
+--machine-type=g1-small \
+--zone=europe-west3-a \
+--tags puma-server \
+--restart-on-failure
+
+# С последним созданным образом
+# --image=$image_name заменить на --image-family=reddit-full 
 ```
