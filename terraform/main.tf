@@ -11,7 +11,7 @@ provider "google" {
 }
 
 resource "google_compute_instance" "app" {
-  count = var.counter
+  count        = var.counter
   name         = "reddit-app${count.index}"
   machine_type = "g1-small"
   zone         = var.zone
@@ -29,7 +29,7 @@ resource "google_compute_instance" "app" {
 
   metadata = {
     # Путь до публичного ключа
-    ssh-keys = "appuser:${file(var.public_key_path)}"
+    ssh-keys               = "appuser:${file(var.public_key_path)}"
     block-project-ssh-keys = false
   }
 
@@ -68,7 +68,7 @@ resource "google_compute_firewall" "firewall_puma" {
 }
 
 resource "google_compute_project_metadata" "ssh_keys" {
-    metadata = {
+  metadata = {
     ssh-keys = <<EOF
     appuser1:${file(var.public_key_path)}
     appuser2:${file(var.public_key_path)}
