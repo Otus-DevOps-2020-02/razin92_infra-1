@@ -17,3 +17,11 @@ variable disk_image {
   description = "Disk image"
 }
 
+variable zone {
+  description = "Instance zone"
+  default     = "europe-west1-b"
+}
+
+variable private_key_path {
+  description = "Path to the private key used for ssh access"
+}
