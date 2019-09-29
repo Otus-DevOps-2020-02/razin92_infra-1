@@ -1,10 +1,12 @@
 # razin92_infra
 Репозиторий для работы над домашними заданиями в рамках курса **"DevOps практики и инструменты"**
+
 **Содрежание:**
 <a name="top"></a>
-1. [ДЗ 3 - Знакомство с облачной инфраструктурой](#hw3)
-2. [ДЗ 4 - Деплой тестового приложения](#hw4)
-3. [ДЗ 5 - Сборка образов VM при помощи Packer](#hw5)
+1. [ДЗ#3 - Знакомство с облачной инфраструктурой](#hw3)
+2. [ДЗ#4 - Деплой тестового приложения](#hw4)
+3. [ДЗ#5 - Сборка образов VM при помощи Packer](#hw5)
+4. [ДЗ#6 - Практика IaC с использованием Terraform](#hw6)
 ---
 <a name="hw3"></a> 
 # Домашнее задание 3
@@ -569,4 +571,205 @@ gcloud compute instances create $instance_name \
 
 # С последним созданным образом
 # --image=$image_name заменить на --image-family=reddit-full 
+```
+<a name="HW6"></a>
+[Содержание](#top)
+# Домашнее задание 6
+## Практика IaC с использованием Terraform
+### Terraform-1
+**Список основных комманд для работы с Terraform** 
+
+[Команды в документации](https://www.terraform.io/docs/cli-index.html)
+1. Инициализация проекта 
+```
+terraform init
+```
+2. Проверка синтаксиса конфигруционных файлов .tf 
+```
+terraform validate
+```
+3. Проверка изменений 
+```
+terraform plan
+```
+4. Применение изменений 
+```
+terraform apply
+```
+5. Просмотр текущего состояния проекта 
+```
+terraform show
+```
+6. Просмотр вывода при настроенной секции `outputs`
+```
+terraform output
+terraform output <переменная>
+# terraform output app_external_ip
+```
+7. Пересоздание ресурса
+```
+terraform taint <имя ресурса>
+# terraform taint google_compute_instance.app
+```
+8. Удаление всех ресурсов
+```
+terraform destroy
+```
+9. Форматирование конфигурационных файлов для повышения "читаемости"
+```
+terraform fmt
+``` 
+
+**Основные секции в конфигурационных файлах**
+
+[Конфигурация в документации](https://www.terraform.io/docs/configuration/index.html)
+1. terraform
+```
+terraform {
+    # Описывает конфигурацию самого terraform
+    # Например: требуемая версия
+    required_version = "0.12.8"
+}
+```
+2. [provider](https://www.terraform.io/docs/providers/index.html)
+```
+provider "<имя_провайдера>" {
+    # Конфигурация используемого провайдера
+}
+
+# Пример
+provider "google" {
+  # Версия провайдера
+  version = "2.15.0"
+  project = "project-id"
+  region  = "europe-west1"
+}
+```
+3. [resource](https://www.terraform.io/docs/configuration/resources.html)
+    - [provisioner](https://www.terraform.io/docs/provisioners/index.html)
+```
+resource "<тип_ресурса>" "<имя_ресурса>" {
+    # Описывает конфигурацию ресурса
+}
+```
+```
+provisioner "<тип>" {
+    # Описывает действия после создания ресурса
+    # Является частью конфигурации ресурса
+}
+# Примеры
+# Поставщик типа "файл" копирует файл из локального хранилища в ресурс
+provisioner "file" {
+    source      = "files/puma.service"
+    destination = "/tmp/puma.service"
+}
+# Поставщик типа "remote-exec" производит выполенение команды в ресурсе
+provisioner "remote-exec" {
+    script = "files/deploy.sh"
+}
+```
+***Полный пример ресурсов на примере GCP (Инстанса и Правила брандмауэра)***
+```
+resource "google_compute_instance" "app" {
+  name         = "reddit-app"
+  machine_type = "g1-small"
+  zone         = var.zone
+  tags         = ["reddit-app"]
+  boot_disk {
+    initialize_params {
+      image = var.disk_image
+    }
+  }
+
+  network_interface {
+    network = "default"
+    access_config {}
+  }
+
+  metadata = {
+    # Путь до публичного ключа
+    ssh-keys = "appuser:${file(var.public_key_path)})"
+  }
+
+  connection {
+    type        = "ssh"
+    host        = self.network_interface[0].access_config[0].nat_ip
+    user        = "appuser"
+    agent       = false
+    private_key = file(var.private_key_path)
+  }
+
+  provisioner "file" {
+    source      = "files/puma.service"
+    destination = "/tmp/puma.service"
+  }
+
+  provisioner "remote-exec" {
+    script = "files/deploy.sh"
+  }
+}
+
+resource "google_compute_firewall" "firewall_puma" {
+  name = "allow-puma-default"
+  # Сеть, в которй действует правило
+  network = "default"
+  # Список разрешений
+  allow {
+    protocol = "tcp"
+    ports    = ["9292"]
+  }
+  # Каким адресам рарешается доступ
+  source_ranges = ["0.0.0.0/0"]
+  # Правило применимо для инстансов с перечисленными тэгами
+  target_tags = ["reddit-app"]
+}
+```
+4. [output](https://www.terraform.io/docs/configuration/outputs.html)
+```
+output "<имя_переменной>" {
+  # Выводит выбранные параметры состояния проекта
+}
+
+# Пример, внешний IP-адрес инстанса GCP
+output "app_external_ip" {
+  value = google_compute_instance.app.network_interface[0].access_config[0].nat_ip
+}
+```
+5. [variable](https://www.terraform.io/docs/configuration/variables.html)
+```
+variable <имя_переменной> {
+    # Пользовательская переменная, используемая в проекте
+}
+
+# Пример
+variable region {
+  # Описание переменной
+  description = "Region"
+  # Значение по умолчанию
+  default = "europe-west1"
+}
+
+# Пример использования в конфигурации
+# var.<имя_переменной>
+...
+provider "google" {
+  # Версия провайдера
+  version = "2.15.0"
+  project = "project-id"
+  region  = var.region # <-- вызов переменной
+}
+# Переменные без значения по-умолчанию хранятся в файле *.tfvars
+```
+`*.tfvars.example`
+```
+project = "your_project_id"
+disk_image = "reddit-base"
+```
+Рекомендуемые файлы для .gitignore
+```
+*.tfstate
+*.tfstate.*.backup
+*.tfstate.backup
+*.tfvars
+.terraform/
 ```
