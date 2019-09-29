@@ -668,7 +668,7 @@ provisioner "remote-exec" {
     script = "files/deploy.sh"
 }
 ```
-***Полный пример ресурсов на примере GCP (Инстанса и Правила брандмауэра)***
+***Полный пример ресурсов на примере [GCP](https://www.terraform.io/docs/providers/google/index.html) (Инстанса и Правила брандмауэра)***
 ```
 resource "google_compute_instance" "app" {
   name         = "reddit-app"
@@ -773,3 +773,131 @@ disk_image = "reddit-base"
 *.tfvars
 .terraform/
 ```
+## Задание со *
+Для добавление SSH-ключей в проект необходимо добавить следующую конфигурацию
+```
+# Метаданные ssh-keys
+resource "google_compute_project_metadata" "ssh_keys" {
+    metadata = {
+    ssh-keys = "appuser1:${file(var.public_key_path)}"
+  }
+}
+
+# Также для блокировки ssh-ключей внутри инстанса
+# Указывается в разделе metadata {} конфигурации инстанса
+...
+metadata = {
+    block-project-ssh-keys = false
+  }
+...
+```
+Для указания нескольких ключей стоит указать их в одну строку
+```
+resource "google_compute_project_metadata" "ssh_keys" {
+    metadata = {
+    ssh-keys = "appuser1:${file(var.public_key_path)}appuser2:${file(var.public_key_path)}"
+  }
+}
+# или для читаемости
+resource "google_compute_project_metadata" "ssh_keys" {
+    metadata = {
+    ssh-keys = <<EOF
+    appuser1:${file(var.public_key_path)}
+    appuser2:${file(var.public_key_path)}
+    EOF
+  }
+}
+```
+**! Внимание**
+
+При применении данных конфигураций из проекта GCP удалятся ключи, созданные вручную (через WEB или утилиту gloud). Поэтому все ключи стоит хранить в конфигурации terraform.
+## Задание с **
+### Создание балансировщика
+Необходимые компоненты для работы балансировщика
+
+Группа инстансов
+```
+resource "google_compute_instance_group" "app-cluster" {
+  name = "app-cluster"
+  description = "Reddit-app instance group"
+  project = var.project
+  # Список инстансов, входящих в группу
+  instances = "${google_compute_instance.app.*.self_link}"
+
+  # Именованный порт приложения
+  named_port {
+    name = "app-http"
+    port = "9292"
+  }
+
+  zone = var.zone
+}
+```
+Мониторинг доступности ресурсов
+```
+resource "google_compute_health_check" "app-healthcheck" {
+  name = "app-healthcheck"
+  check_interval_sec = 1
+  timeout_sec = 1
+  tcp_health_check {
+    port = "9292"
+  }
+}
+```
+Бэкенд сервис
+```
+resource "google_compute_backend_service" "app-backend" {
+  name = "app-backend"
+  protocol = "HTTP"
+  port_name = "app-http"
+  timeout_sec = 10
+
+  backend {
+    # Группа инстансов
+    group = "${google_compute_instance_group.app-cluster.self_link}"
+  }
+  # Ссылка на мониторинг доступности
+  health_checks = ["${google_compute_health_check.app-healthcheck.self_link}"]
+}
+```
+URL-map
+```
+resource "google_compute_url_map" "app-map" {
+  name = "app-map"
+  description = "Reddit-app LB"
+  # Бекенд-сервис по-умолчанию для неопознанных запросов
+  default_service = "${google_compute_backend_service.app-backend.self_link}"
+
+  # Правило перенаправления на бекенд
+  host_rule {
+    hosts = ["*"]
+    path_matcher = "allpaths"
+  }
+
+  # Условия срабатывания перенаправления на бекенд
+  path_matcher {
+    name = "allpaths"
+    default_service = "${google_compute_backend_service.app-backend.self_link}"
+  }
+}
+```
+Правило перенаправления трафика
+```
+resource "google_compute_global_forwarding_rule" "app-rule"{
+  name       = "app-rule"
+  # Все запросы на указанный порт отправляем на Proxy
+  target     = "${google_compute_target_http_proxy.app-proxy.self_link}"
+  port_range = "80"
+}
+```
+http-proxy для входящего трафика
+```
+resource "google_compute_target_http_proxy" "app-proxy" {
+  name        = "app-proxy"
+  # Все принятые запросы перенаправляются на URL-map
+  url_map     = "${google_compute_url_map.app-map.self_link}"
+}
+```
+Использование `count` и вынесение количества циклов в переменные позволяет управлять количеством необходимых ресурсов централизованно, также можно гарантировать их идентичность. 
+
+Использование одинаковых приложений, предоставленных для домашней работы, в балансировке применимо только для статичных данных. При работе с динамическими данными, при падении одного из инстансов, вся его база данных будет потеряна для работы. Для корректной балансировки необходимо синхронизировать базы данных всех инстансов.
