@@ -1,10 +1,12 @@
 # razin92_infra
 Репозиторий для работы над домашними заданиями в рамках курса **"DevOps практики и инструменты"**
+
 **Содрежание:**
 <a name="top"></a>
-1. [ДЗ 3 - Знакомство с облачной инфраструктурой](#hw3)
-2. [ДЗ 4 - Деплой тестового приложения](#hw4)
-3. [ДЗ 5 - Сборка образов VM при помощи Packer](#hw5)
+1. [ДЗ#3 - Знакомство с облачной инфраструктурой](#hw3)
+2. [ДЗ#4 - Деплой тестового приложения](#hw4)
+3. [ДЗ#5 - Сборка образов VM при помощи Packer](#hw5)
+4. [ДЗ#6 - Практика IaC с использованием Terraform](#hw6)
 ---
 <a name="hw3"></a> 
 # Домашнее задание 3
@@ -570,3 +572,332 @@ gcloud compute instances create $instance_name \
 # С последним созданным образом
 # --image=$image_name заменить на --image-family=reddit-full 
 ```
+<a name="HW6"></a>
+[Содержание](#top)
+# Домашнее задание 6
+## Практика IaC с использованием Terraform
+### Terraform-1
+**Список основных комманд для работы с Terraform** 
+
+[Команды в документации](https://www.terraform.io/docs/cli-index.html)
+1. Инициализация проекта 
+```
+terraform init
+```
+2. Проверка синтаксиса конфигруционных файлов .tf 
+```
+terraform validate
+```
+3. Проверка изменений 
+```
+terraform plan
+```
+4. Применение изменений 
+```
+terraform apply
+```
+5. Просмотр текущего состояния проекта 
+```
+terraform show
+```
+6. Просмотр вывода при настроенной секции `outputs`
+```
+terraform output
+terraform output <переменная>
+# terraform output app_external_ip
+```
+7. Пересоздание ресурса
+```
+terraform taint <имя ресурса>
+# terraform taint google_compute_instance.app
+```
+8. Удаление всех ресурсов
+```
+terraform destroy
+```
+9. Форматирование конфигурационных файлов для повышения "читаемости"
+```
+terraform fmt
+``` 
+
+**Основные секции в конфигурационных файлах**
+
+[Конфигурация в документации](https://www.terraform.io/docs/configuration/index.html)
+1. terraform
+```
+terraform {
+    # Описывает конфигурацию самого terraform
+    # Например: требуемая версия
+    required_version = "0.12.8"
+}
+```
+2. [provider](https://www.terraform.io/docs/providers/index.html)
+```
+provider "<имя_провайдера>" {
+    # Конфигурация используемого провайдера
+}
+
+# Пример
+provider "google" {
+  # Версия провайдера
+  version = "2.15.0"
+  project = "project-id"
+  region  = "europe-west1"
+}
+```
+3. [resource](https://www.terraform.io/docs/configuration/resources.html)
+    - [provisioner](https://www.terraform.io/docs/provisioners/index.html)
+```
+resource "<тип_ресурса>" "<имя_ресурса>" {
+    # Описывает конфигурацию ресурса
+}
+```
+```
+provisioner "<тип>" {
+    # Описывает действия после создания ресурса
+    # Является частью конфигурации ресурса
+}
+# Примеры
+# Поставщик типа "файл" копирует файл из локального хранилища в ресурс
+provisioner "file" {
+    source      = "files/puma.service"
+    destination = "/tmp/puma.service"
+}
+# Поставщик типа "remote-exec" производит выполенение команды в ресурсе
+provisioner "remote-exec" {
+    script = "files/deploy.sh"
+}
+```
+***Полный пример ресурсов на примере [GCP](https://www.terraform.io/docs/providers/google/index.html) (Инстанса и Правила брандмауэра)***
+```
+resource "google_compute_instance" "app" {
+  name         = "reddit-app"
+  machine_type = "g1-small"
+  zone         = var.zone
+  tags         = ["reddit-app"]
+  boot_disk {
+    initialize_params {
+      image = var.disk_image
+    }
+  }
+
+  network_interface {
+    network = "default"
+    access_config {}
+  }
+
+  metadata = {
+    # Путь до публичного ключа
+    ssh-keys = "appuser:${file(var.public_key_path)})"
+  }
+
+  connection {
+    type        = "ssh"
+    host        = self.network_interface[0].access_config[0].nat_ip
+    user        = "appuser"
+    agent       = false
+    private_key = file(var.private_key_path)
+  }
+
+  provisioner "file" {
+    source      = "files/puma.service"
+    destination = "/tmp/puma.service"
+  }
+
+  provisioner "remote-exec" {
+    script = "files/deploy.sh"
+  }
+}
+
+resource "google_compute_firewall" "firewall_puma" {
+  name = "allow-puma-default"
+  # Сеть, в которй действует правило
+  network = "default"
+  # Список разрешений
+  allow {
+    protocol = "tcp"
+    ports    = ["9292"]
+  }
+  # Каким адресам рарешается доступ
+  source_ranges = ["0.0.0.0/0"]
+  # Правило применимо для инстансов с перечисленными тэгами
+  target_tags = ["reddit-app"]
+}
+```
+4. [output](https://www.terraform.io/docs/configuration/outputs.html)
+```
+output "<имя_переменной>" {
+  # Выводит выбранные параметры состояния проекта
+}
+
+# Пример, внешний IP-адрес инстанса GCP
+output "app_external_ip" {
+  value = google_compute_instance.app.network_interface[0].access_config[0].nat_ip
+}
+```
+5. [variable](https://www.terraform.io/docs/configuration/variables.html)
+```
+variable <имя_переменной> {
+    # Пользовательская переменная, используемая в проекте
+}
+
+# Пример
+variable region {
+  # Описание переменной
+  description = "Region"
+  # Значение по умолчанию
+  default = "europe-west1"
+}
+
+# Пример использования в конфигурации
+# var.<имя_переменной>
+...
+provider "google" {
+  # Версия провайдера
+  version = "2.15.0"
+  project = "project-id"
+  region  = var.region # <-- вызов переменной
+}
+# Переменные без значения по-умолчанию хранятся в файле *.tfvars
+```
+`*.tfvars.example`
+```
+project = "your_project_id"
+disk_image = "reddit-base"
+```
+Рекомендуемые файлы для .gitignore
+```
+*.tfstate
+*.tfstate.*.backup
+*.tfstate.backup
+*.tfvars
+.terraform/
+```
+## Задание со *
+Для добавление SSH-ключей в проект необходимо добавить следующую конфигурацию
+```
+# Метаданные ssh-keys
+resource "google_compute_project_metadata" "ssh_keys" {
+    metadata = {
+    ssh-keys = "appuser1:${file(var.public_key_path)}"
+  }
+}
+
+# Также для блокировки ssh-ключей внутри инстанса
+# Указывается в разделе metadata {} конфигурации инстанса
+...
+metadata = {
+    block-project-ssh-keys = false
+  }
+...
+```
+Для указания нескольких ключей стоит указать их в одну строку
+```
+resource "google_compute_project_metadata" "ssh_keys" {
+    metadata = {
+    ssh-keys = "appuser1:${file(var.public_key_path)}appuser2:${file(var.public_key_path)}"
+  }
+}
+# или для читаемости
+resource "google_compute_project_metadata" "ssh_keys" {
+    metadata = {
+    ssh-keys = <<EOF
+    appuser1:${file(var.public_key_path)}
+    appuser2:${file(var.public_key_path)}
+    EOF
+  }
+}
+```
+**! Внимание**
+
+При применении данных конфигураций из проекта GCP удалятся ключи, созданные вручную (через WEB или утилиту gloud). Поэтому все ключи стоит хранить в конфигурации terraform.
+## Задание с **
+### Создание балансировщика
+Необходимые компоненты для работы балансировщика
+
+Группа инстансов
+```
+resource "google_compute_instance_group" "app-cluster" {
+  name = "app-cluster"
+  description = "Reddit-app instance group"
+  project = var.project
+  # Список инстансов, входящих в группу
+  instances = "${google_compute_instance.app.*.self_link}"
+
+  # Именованный порт приложения
+  named_port {
+    name = "app-http"
+    port = "9292"
+  }
+
+  zone = var.zone
+}
+```
+Мониторинг доступности ресурсов
+```
+resource "google_compute_health_check" "app-healthcheck" {
+  name = "app-healthcheck"
+  check_interval_sec = 1
+  timeout_sec = 1
+  tcp_health_check {
+    port = "9292"
+  }
+}
+```
+Бэкенд сервис
+```
+resource "google_compute_backend_service" "app-backend" {
+  name = "app-backend"
+  protocol = "HTTP"
+  port_name = "app-http"
+  timeout_sec = 10
+
+  backend {
+    # Группа инстансов
+    group = "${google_compute_instance_group.app-cluster.self_link}"
+  }
+  # Ссылка на мониторинг доступности
+  health_checks = ["${google_compute_health_check.app-healthcheck.self_link}"]
+}
+```
+URL-map
+```
+resource "google_compute_url_map" "app-map" {
+  name = "app-map"
+  description = "Reddit-app LB"
+  # Бекенд-сервис по-умолчанию для неопознанных запросов
+  default_service = "${google_compute_backend_service.app-backend.self_link}"
+
+  # Правило перенаправления на бекенд
+  host_rule {
+    hosts = ["*"]
+    path_matcher = "allpaths"
+  }
+
+  # Условия срабатывания перенаправления на бекенд
+  path_matcher {
+    name = "allpaths"
+    default_service = "${google_compute_backend_service.app-backend.self_link}"
+  }
+}
+```
+Правило перенаправления трафика
+```
+resource "google_compute_global_forwarding_rule" "app-rule"{
+  name       = "app-rule"
+  # Все запросы на указанный порт отправляем на Proxy
+  target     = "${google_compute_target_http_proxy.app-proxy.self_link}"
+  port_range = "80"
+}
+```
+http-proxy для входящего трафика
+```
+resource "google_compute_target_http_proxy" "app-proxy" {
+  name        = "app-proxy"
+  # Все принятые запросы перенаправляются на URL-map
+  url_map     = "${google_compute_url_map.app-map.self_link}"
+}
+```
+Использование `count` и вынесение количества циклов в переменные позволяет управлять количеством необходимых ресурсов централизованно, также можно гарантировать их идентичность. 
+
+Использование одинаковых приложений, предоставленных для домашней работы, в балансировке применимо только для статичных данных. При работе с динамическими данными, при падении одного из инстансов, вся его база данных будет потеряна для работы. Для корректной балансировки необходимо синхронизировать базы данных всех инстансов.
