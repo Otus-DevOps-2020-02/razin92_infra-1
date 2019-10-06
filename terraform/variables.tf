@@ -29,3 +29,13 @@ variable private_key_path {
 variable counter {
   default = 1
 }
+
+variable app_disk_image {
+  description = "Disk image for reddit app"
+  default     = "reddit-app-base"
+}
+
+variable db_disk_image {
+  description = "Disk image for reddit app's db'"
+  default     = "reddit-db-base"
+}
