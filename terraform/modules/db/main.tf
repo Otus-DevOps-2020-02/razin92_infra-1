@@ -1,6 +1,6 @@
 resource "google_compute_instance" "db" {
   name         = "reddit-db"
-  machine_type = "g1-small"
+  machine_type = var.machine_type
   zone         = var.zone
   tags         = ["reddit-db"]
   boot_disk {
@@ -9,7 +9,7 @@ resource "google_compute_instance" "db" {
     }
   }
   network_interface {
-    network = "default"
+    network = var.network_name
     access_config {}
   }
   metadata = {
@@ -19,7 +19,7 @@ resource "google_compute_instance" "db" {
 
 resource "google_compute_firewall" "firewall_mongo" {
   name    = "allow-mongo-default"
-  network = "default"
+  network = var.network_name
   allow {
     protocol = "tcp"
     ports    = ["27017"]
