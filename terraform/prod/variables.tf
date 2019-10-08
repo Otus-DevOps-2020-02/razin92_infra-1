@@ -45,3 +45,6 @@ variable machine_type {
   default     = "f1-micro"
 }
 
+variable admin_ip {
+  description = "Point admin ip-address"
+}

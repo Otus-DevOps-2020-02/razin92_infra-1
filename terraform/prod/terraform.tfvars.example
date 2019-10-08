@@ -3,3 +3,4 @@ public_key_path  = "~/.ssh/appuser.pub"
 private_key_path = "~/.ssh/appuser"
 disk_image       = "reddit-base"
 counter          = 1
+admin_ip         = "1.2.3.4/32"
