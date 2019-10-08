@@ -15,6 +15,30 @@ resource "google_compute_instance" "app" {
   metadata = {
     ssh-keys = "appuser:${file(var.public_key_path)}"
   }
+
+  connection {
+    type        = "ssh"
+    host        = google_compute_address.app_ip.address
+    user        = "appuser"
+    agent       = false
+    private_key = file(var.private_key_path)
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "echo 'export DATABASE_URL=${var.db_ip}' >> /home/appuser/.profile"
+    ]
+  }
+
+  provisioner "file" {
+    source      = "${path.module}/puma.service"
+    destination = "/tmp/puma.service"
+  }
+
+  provisioner "remote-exec" {
+    script = "${path.module}/deploy.sh"
+  }
+
 }
 
 
@@ -33,3 +57,4 @@ resource "google_compute_firewall" "firewall_puma" {
   source_ranges = ["0.0.0.0/0"]
   target_tags   = ["reddit-app"]
 }
+

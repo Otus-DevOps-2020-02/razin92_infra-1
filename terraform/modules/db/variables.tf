@@ -20,3 +20,7 @@ variable network_name {
   description = "Network used for the App"
   default     = "default"
 }
+
+variable private_key_path {
+  description = "Path to the private key used for ssh access"
+}

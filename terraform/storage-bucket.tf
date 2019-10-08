@@ -9,7 +9,8 @@ module "storage-bucket" {
   version  = "0.3.0"
   location = var.region
   # Имя поменяйте на другое
-  name = "storage-bucket-reddit-app"
+  name          = "storage-bucket-reddit-app"
+  force_destroy = true
 }
 
 output storage-bucket_url {
