@@ -7,6 +7,7 @@
 2. [ДЗ#4 - Деплой тестового приложения](#hw4)
 3. [ДЗ#5 - Сборка образов VM при помощи Packer](#hw5)
 4. [ДЗ#6 - Практика IaC с использованием Terraform](#hw6)
+5. [ДЗ#7 - Принципы организации инфраструктурного кода и работа над инфраструктурой в команде на примере Terraform](#hw7)
 ---
 <a name="hw3"></a> 
 # Домашнее задание 3
@@ -901,3 +902,215 @@ resource "google_compute_target_http_proxy" "app-proxy" {
 Использование `count` и вынесение количества циклов в переменные позволяет управлять количеством необходимых ресурсов централизованно, также можно гарантировать их идентичность. 
 
 Использование одинаковых приложений, предоставленных для домашней работы, в балансировке применимо только для статичных данных. При работе с динамическими данными, при падении одного из инстансов, вся его база данных будет потеряна для работы. Для корректной балансировки необходимо синхронизировать базы данных всех инстансов.
+
+<a name="HW7"></a>
+[Содержание](#top)
+# Домашнее задание 7
+## Принципы организации инфраструктурного кода и работа над инфраструктурой в команде на примере Terraform
+### Terraform-2
+
+Добавление уже имеющихся ресурсов у провайдера
+```
+$ terraform import <ресурс>
+
+# Пример
+$ terraform import google_compute_firewall.firewall_ssh default-allow-ssh
+```
+Это говорит о том, что Terraform имеет иноформацию о всех ресурсах провайдера и их всегда можно добавить в конфигурацию.
+
+Создание ресурса GCP ip-адрес
+```
+resource "google_compute_address" "app_ip" {
+  name = "reddit-app-ip"
+}
+```
+
+В конфигурации можно ссылаться на уже указанные ресурсы. При этом порядок создания ресурсов будет согласно зависимостям. Это пример ***Неявной зависимости***.
+```
+network_interface {
+ network = "default"
+ access_config = {
+   # Использование вышеуказанного ресурса
+   nat_ip = google_compute_address.app_ip.address
+ }
+}
+```
+
+Для удобства управлением проекта конфигурация может быть разбита на несколько `*.tf`-файлов. Также, для многократного использования конфигурации применяются ***Модули***. Конфигурация модулей такая же, как и у обычного проекта, за исключением того, что они могут представлять только какую-то его часть. Например, только один ресурс. 
+
+**Пример использования модулей**
+```
+provider "google" {
+  version = "~> 2.15"
+  project = var.project
+  region  = var.region
+}
+
+module "app" {
+  # Расположение директории с модулем
+  source          = "modules/app"
+  # Переменные, передаваемые в модуль
+  public_key_path = var.public_key_path
+  zone            = var.zone
+  app_disk_image  = var.app_disk_image
+}
+
+module "db" {
+  source          = "modules/db"
+  public_key_path = var.public_key_path
+  zone            = var.zone
+  db_disk_image   = var.db_disk_image
+}
+```
+**Загрузка указанных модулей в проект (в директорию .terraform)**
+```
+$ terraform get
+
+# Результат выполнения
+Get: file:///Users/user01/hw09/modules/app
+Get: file:///Users/user01/hw09/modules/db
+
+# Пример расположения
+$ tree .terraform
+.terraform
+├── modules
+│ ├── 9926d1ca5a4ce00042725999e3b3a90f -> /Users/user01/hw09/modules/db
+│ └── dea8bdea57c956cc3317d254e5822e13 -> /Users/user01/hw09/modules/app
+└── plugins
+└── darwin_amd64
+├── lock.json
+└── terraform-provider-google_v0.1.3_x4
+
+```
+**Получение Output-переменных из модуля**
+```
+# Output модуля
+output "app_external_ip" {
+  value = google_compute_instance.app.network_interface.0.access_config.0.assigned_nat_ip
+}
+
+# Использование переменной в проекте
+output "app_external_ip" {
+  value = module.app.app_external_ip
+}
+``` 
+[Реестр модулей для Terraform](https://registry.terraform.io/)
+
+[Модули для провайдера Google](https://registry.terraform.io/browse?provider=google)
+
+**Пример использования модуля из реестра.**
+
+[Модуль storage-bucket](https://registry.terraform.io/modules/SweetOps/storage-bucket/google)
+
+После инициализации и применения создает бакет в указанном проекте
+```
+provider "google" {
+  version = "~> 2.15"
+  project = var.project
+  region  = var.region
+}
+
+module "storage-bucket" {
+  source  = "SweetOps/storage-bucket/google"
+  version = "0.3.0"
+
+  # Наименования бакета
+  name = "storage-bucket-test"
+}
+
+output storage-bucket_url {
+  value = module.storage-bucket.url
+}
+```
+## Задание со *
+Для хранения состояния проекта можно использовать удаленные бакеты, что будет полезно для работы в команде или на разных рабочих станциях. Место хранения стейт-файла указывается в конфигурации вида:
+```
+# backend.tf
+
+terraform {
+  backend "gcs" {
+    # Имя бакета
+    bucket = "storage-bucket-test"
+    # Имя директории
+    prefix = "test1"
+  }
+}
+```
+При применении изменений одновременно с нескольких расположений конфигурации, но с единым местом хранения стейт-файла то применение, что выполнялось первым заблокирует стейт до окончания применений. При этом будет выведена информация о блокировке.
+```
+$ terraform apply
+Acquiring state lock. This may take a few moments...
+
+Error: Error locking state: Error acquiring the state lock: writing "gs://storage-bucket-reddit-app/stage/default.tflock" failed: googleapi: Error 412: Precondition Failed, conditionNotMet
+Lock Info:
+  ID:        1570462114386010
+  Path:      gs://storage-bucket-reddit-app/stage/default.tflock
+  Operation: OperationTypeApply
+  Who:       user@hostname
+  Version:   0.12.8
+  Created:   2019-10-07 15:28:34.17645946 +0000 UTC
+  Info:
+
+
+Terraform acquires a state lock to protect the state from being written
+by multiple users at the same time. Please resolve the issue above and try
+again. For most commands, you can disable locking with the "-lock=false"
+flag, but this is not recommended.
+```
+## Задание с **
+При использовании провиженеров внутри модулей необходимо учесть расположение файлов для развертывания.
+
+Например, если скрипты находятся в директории с модулем можно использовать переменную `${path.module}`, которая укажет на расположения директории модуля.
+```
+provisioner "file" {
+    # Путь до скрипта
+    source      = "${path.module}/puma.service"
+    destination = "/tmp/puma.service"
+  }
+```
+Так как во время выполнения домашнего задания VM тестового приложения была отделена от VM базы данных необходимо указать настройки подключения к БД.
+
+Получение внутреннего ip-адреса VM БД
+```
+# modules/db/outputs.tf
+
+output "db_internal_ip" {
+  value = google_compute_instance.db.network_interface.0.network_ip
+}
+```
+Передача внутреннего ip-адреса VM БД в VM приложения
+```
+# prod/main.tf
+
+module "app" {
+  # ...
+  db_ip = module.db.db_internal_ip
+}
+```
+Использование адреса в конфигурации
+```
+# modules/app/main.tf
+
+provisioner "remote-exec" {
+    inline = [
+      "echo 'export DATABASE_URL=${var.db_ip}' >> /home/appuser/.profile"
+    ]
+  }
+```
+Так как конфигурация MongoDB стандартная, то монго слушает обращения только с localhost.
+
+Изменение конфигурации MongoDB для работы приложения
+```
+# modules/db/main.tf
+
+provisioner "remote-exec" {
+    inline = [
+      "sudo sed -i 's/127.0.0.1/0.0.0.0/' /etc/mongod.conf",
+      "sudo systemctl restart mongod"
+    ]
+  }
+
+# sed - замена строк в файле
+# -i - сохранение изменений
+# s/127.0.0.1/0.0.0.0/ - строка/поиск значения/новое значение
+```
