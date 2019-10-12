@@ -1,8 +1,0 @@
-all:
-  children:
-    app:
-      hosts:
-        34.76.177.91:
-    db:
-      hosts:
-        34.77.109.10:
