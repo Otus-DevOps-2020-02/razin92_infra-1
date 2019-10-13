@@ -8,6 +8,7 @@
 3. [ДЗ#5 - Сборка образов VM при помощи Packer](#hw5)
 4. [ДЗ#6 - Практика IaC с использованием Terraform](#hw6)
 5. [ДЗ#7 - Принципы организации инфраструктурного кода и работа над инфраструктурой в команде на примере Terraform](#hw7)
+6. [ДЗ#8 - Управление конфигурацией. Основные DevOps инструменты. Знакомство с Ansible](#hw8)
 ---
 <a name="hw3"></a> 
 # Домашнее задание 3
@@ -1113,4 +1114,294 @@ provisioner "remote-exec" {
 # sed - замена строк в файле
 # -i - сохранение изменений
 # s/127.0.0.1/0.0.0.0/ - строка/поиск значения/новое значение
+```
+<a name="HW7"></a>
+[Содержание](#top)
+# Домашнее задание 8
+## Управление конфигурацией. Основные DevOps инструменты. Знакомство с Ansible
+### Ansible-1
+
+***Установка Ansible***
+```
+$ python -m pip install ansible
+```
+***Запуск***
+```
+$ ansible all|host|group -i inventory -m ping
+
+# -m - вызов модуля
+# -i - вызов инвентаря
+```
+
+***Конфигурационный файл***
+```
+# ansible.cfg
+
+[defaults]
+inventory = ./inventory
+remote_user = appuser
+private_key_file = ~/.ssh/appuser
+host_key_checking = False
+retry_files_enabled = False
+```
+<a name="inventory"></a>
+***Файлы инвентаря***
+
+[Документация](https://docs.ansible.com/ansible/latest/user_guide/intro_inventory.html)
+1. .ini
+```
+# inventory
+
+[app]
+appserver ansible_host=app.example.com
+
+[db]
+dbserver ansible_host=db.example.com
+```
+2. .yml
+```
+# inventory.yml
+
+all:
+  children:
+    app:
+      hosts:
+        app.example.com:
+    db:
+      hosts:
+        db.example.com:
+```
+3. .json static
+```
+# inventory.json
+
+{
+  "all": {
+    "children": {
+      "app": {
+        "hosts": {
+          "app.example.com": null
+        }
+      },
+      "db": {
+        "hosts": {
+          "db.example.com": null
+        }
+      }
+    }
+  }
+}
+```
+4. .json dynamic
+```
+# результат выполнения скрипта
+
+{
+  "app": {
+    "hosts": ["app.example.com"]
+    }, 
+  "db": {
+    "hosts": ["db.example.com"]
+    }
+}
+```
+***Выполнение команд на удаленном хосте***
+
+Модуль `command`
+```
+$ ansible app -m command -a 'ruby -v'
+appserver | SUCCESS | rc=0 >>
+ruby 2.3.1p112 (2016-04-26) [x86_64-linux-gnu]
+
+$ ansible app -m command -a 'bundler -v'
+appserver | SUCCESS | rc=0 >>
+Bundler version 1.11.2
+
+$ ansible db -m command -a 'systemctl status mongod'
+dbserver | SUCCESS | rc=0 >>
+● mongod.service - High-performance, schema-free document-oriented database
+
+# не может выполнить несколько команд за раз
+# не использует оболочку окружения (sh, bash)
+$ ansible app -m command -a 'ruby -v; bundler -v'
+appserver | FAILED | rc=1 >>
+ruby: invalid option -; (-h will show valid options) (RuntimeError)non-zero
+return code
+```
+Модуль `shell`
+```
+$ ansible app -m shell -a 'ruby -v; bundler -v'
+appserver | SUCCESS | rc=0 >>
+ruby 2.3.1p112 (2016-04-26) [x86_64-linux-gnu]
+Bundler version 1.11.2
+
+$ ansible db -m shell -a 'systemctl status mongod'
+dbserver | SUCCESS | rc=0 >>
+● mongod.service - High-performance, schema-free document-oriented database
+```
+Модуль `systemd`
+```
+$ ansible db -m systemd -a name=mongod
+dbserver | SUCCESS => {
+    "changed": false,
+    "name": "mongod",
+    "status": {
+        "ActiveState": "active", ...
+```
+Модуль `service`
+```
+$ ansible db -m service -a name=mongod
+dbserver | SUCCESS => {
+    "changed": false,
+    "name": "mongod",
+    "status": {
+        "ActiveState": "active", ...
+```
+Модуль `git`
+```
+$ ansible app -m git -a \
+    'repo=https://github.com/express42/reddit.git dest=/home/appuser/reddit'
+appserver | SUCCESS => {
+    "after": "61a7f75b3d3e6f7a8f279896fb4e9f0556e1a70a",
+    "before": null,
+    "changed": true
+}
+$ ansible app -m git -a \
+    'repo=https://github.com/express42/reddit.git dest=/home/appuser/reddit'
+appserver | SUCCESS => {
+    "after": "61a7f75b3d3e6f7a8f279896fb4e9f0556e1a70a",
+    "before": "5c217c565c1122c5343dc0514c116ae816c17ca2",
+    "changed": false,
+    "remote_url_changed": false
+}
+```
+### Плейбук
+Последовательно выполняет все описанные действия
+```
+# clone.yml
+
+---
+- name: Clone
+  hosts: app
+  tasks:
+    - name: Clone repo
+      git:
+        repo: https://github.com/express42/reddit.git
+        dest: /home/appuser/reddit
+```
+Запуск
+```
+ansible-playbook clone.yml
+```
+Результат выполнения плейбука при уже имеющихся данных у хоста
+```
+PLAY RECAP **********************************************************************************************************
+app.example.com               : ok=2    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0
+```
+Результат выполнения плейбука после удаления директории `/home/appuser/reddit`
+```
+TASK [Clone repo] ***************************************************************************************************
+changed: [app.example.com]
+
+PLAY RECAP **********************************************************************************************************
+app.example.com               : ok=2    changed=1    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0
+```
+Флаг `changed` указывает на то, что был изменен один хост, а именно, выполнена комманда клонирования git-репозитория в директорию, указанную в playbook, так как при запуске Ansible он при проверке ее не нашел
+
+## Задание со *
+Примеры инвентори учебного проекта см. [выше](#inventory)
+
+Статический инвентори .json повторяет структуру .yml файла.
+
+Динамический инвентори отличается по структуре. Формируется только при выполнении скрипта (bash, python, ruby и др.). При использовании параметра `--list` возвращает полный список хостов в виде инветори. Также есть опциональный параметр `--host <hostname>`, при котором скрипт должен вернуть список с переменными для этого хоста. Секция `_meta` может помочь получить все нужные переменные хостов за одну команду.
+```
+{
+    "group": {
+        "hosts": [
+            "host1.example.com",
+            "host2.example.com"
+        ],
+        "vars": {
+            "ansible_ssh_user": "appuser",
+            "ansible_ssh_private_key_file": "~/.ssh/appuser",
+            "example_variable": "value"
+        }
+    },
+    # Список всех переменных хостов в инвентори
+    "_meta": {
+        "hostvars": {
+            "host1.example.com": {
+                "host_specific_var": "bar"
+            },
+            "host2.example.com": {
+                "host_specific_var": "foo"
+            }
+        }
+    }
+}
+```
+Для реализации демонстрации динамического инвентори на основе статического проделаны следующие шаги:
+
+Формирование JSON
+```
+{
+  "app": {
+    "hosts": ["app.example.com"]
+    }, 
+  "db": {
+    "hosts": ["db.example.com"]
+    }
+}
+```
+Скрипт, читающий JSON для Ansible. Скрипт должен не возвращать переменную со значением, а возвращать само значение.
+```
+#!/usr/bin/python
+
+import sys
+import json
+
+# чтение параметров командной строки
+script, action = sys.argv
+
+def read_static():
+    # чтение сформированного файла
+    with open('inventory.json') as source:
+        inventory = json.load(source)
+        return json.dumps(inventory)
+
+
+if __name__ == '__main__':
+    # захват команды --list
+    if action == '--list':
+        print(read_static())
+```
+Изменение конфигурационного файла Ansible
+```
+# ansible.cfg
+
+
+[defaults]
+inventory = ./inventory.py
+remote_user = appuser
+private_key_file = ~/.ssh/appuser
+host_key_checking = False
+retry_files_enabled = False
+```
+Результат выполнения `$ ansible all -m ping`
+```
+app.example.com | SUCCESS => {
+    "ansible_facts": {
+        "discovered_interpreter_python": "/usr/bin/python"
+    },
+    "changed": false,
+    "ping": "pong"
+}
+
+db.example.com | SUCCESS => {
+    "ansible_facts": {
+        "discovered_interpreter_python": "/usr/bin/python"
+    },
+    "changed": false,
+    "ping": "pong"
+}
 ```
