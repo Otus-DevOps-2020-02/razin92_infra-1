@@ -15,7 +15,7 @@ resource "google_compute_instance" "db" {
   metadata = {
     ssh-keys = "appuser:${file(var.public_key_path)}"
   }
-
+/*
   connection {
     type        = "ssh"
     host        = self.network_interface[0].access_config[0].nat_ip
@@ -30,7 +30,7 @@ resource "google_compute_instance" "db" {
       "sudo systemctl restart mongod"
     ]
   }
-
+*/
 }
 
 resource "google_compute_firewall" "firewall_mongo" {
