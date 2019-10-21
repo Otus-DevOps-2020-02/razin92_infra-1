@@ -9,6 +9,7 @@
 4. [ДЗ#6 - Практика IaC с использованием Terraform](#hw6)
 5. [ДЗ#7 - Принципы организации инфраструктурного кода и работа над инфраструктурой в команде на примере Terraform](#hw7)
 6. [ДЗ#8 - Управление конфигурацией. Основные DevOps инструменты. Знакомство с Ansible](#hw8)
+7. [ДЗ#9 - Деплой и управление конфигурацией с Ansible](#hw9)
 ---
 <a name="hw3"></a> 
 # Домашнее задание 3
@@ -1115,7 +1116,7 @@ provisioner "remote-exec" {
 # -i - сохранение изменений
 # s/127.0.0.1/0.0.0.0/ - строка/поиск значения/новое значение
 ```
-<a name="HW7"></a>
+<a name="HW8"></a>
 [Содержание](#top)
 # Домашнее задание 8
 ## Управление конфигурацией. Основные DevOps инструменты. Знакомство с Ansible
@@ -1309,6 +1310,7 @@ app.example.com               : ok=2    changed=1    unreachable=0    failed=0  
 Флаг `changed` указывает на то, что был изменен один хост, а именно, выполнена комманда клонирования git-репозитория в директорию, указанную в playbook, так как при запуске Ansible он при проверке ее не нашел
 
 ## Задание со *
+---
 Примеры инвентори учебного проекта см. [выше](#inventory)
 
 Статический инвентори .json повторяет структуру .yml файла.
@@ -1404,4 +1406,366 @@ db.example.com | SUCCESS => {
     "changed": false,
     "ping": "pong"
 }
+```
+<a name="HW9"></a>
+[Содержание](#top)
+# Домашнее задание 9
+## Деплой и управление конфигурацией с Ansible
+### Ansible-2
+
+Все хосты, до которых не смог достучаться Ansible записываются в файл `*.retry`. Этот файл можно использовать для перезапуска плейбука для довыполнения всей работы командой
+```
+$ ansible-playbook playbook.yml --limit @/path/to/*.retry
+```
+***Плейбук*** может состоять из нескольких ***сценариев***. ***Сценарий*** может содержать набор ***заданий*** (`tasks`). Для разделения ***сценариев*** и ***заданий*** можно использовать ***теги*** (`tags`) для дальнейшего выборочного запуска необходимых задач.
+
+***Пример***
+```
+---
+- name: Configure db hosts
+  hosts: db
+  tags: db-tag
+  become: true
+  vars:
+    mongo_bind_ip: 0.0.0.0
+  tasks:
+    - name: Change mongo config file
+      template:
+        src: templates/mongod.conf.j2
+        dest: /etc/mongod.conf
+        mode: 0644 # Права на файл
+      notify: restart mongod
+
+  handlers:
+    - name: restart mongod
+      become: true
+      service: name=mongod state=restarted
+
+- name: Configure app hosts
+  hosts: app
+  tags: app-tag
+  become: true
+  vars:
+    db_host: 10.132.15.212
+  tasks:
+    - name: Add unit file for Puma
+      copy:
+        src: files/puma.service
+        dest: /etc/systemd/system/puma.service
+
+    - name: Add config file for Puma
+      template:
+        src: templates/db_config.j2
+        dest: /home/appuser/db_config
+        owner: appuser
+        group: appuser
+      notify: reload puma
+
+    - name: enable puma
+      systemd: name=puma enabled=yes
+
+  handlers:
+    - name: reload puma
+      service: name=puma state=restarted
+
+- name: Deploy app
+  hosts: app
+  tags: deploy-tag
+  become: true
+  tasks:
+    - name: Fetch the latest version of application code
+      git:
+        repo: 'https://github.com/express42/reddit.git'
+        dest: /home/appuser/reddit
+        version: monolith
+      notify: reload puma
+
+    - name: Bundle install
+      bundler:
+        state: present
+        chdir: /home/appuser/reddit
+
+  handlers:
+    - name: reload puma
+      service: name=puma state=restarted
+```
+Для большего удобства рекомендуется использовать отдельные ***плейбуки*** для разных задач. Это повышает читаемость и уменьшает количество ошибок при редактировании. При использовании нескольких ***плейбуков*** для выполнения одной глобальной задачи можно использовать файл ***плейбука*** с импортом всех используемыех файлов.
+
+***Пример***
+```
+---
+- import_playbook: db.yml
+- import_playbook: app.yml
+- import_playbook: deploy.yml
+```
+Для провервки работоспособности ***плейбуков*** можно использовать следующую команду
+```
+$ ansible-playbook playbook.yml --check
+
+# можно выбрать отдельные хосты или группы: --limit <host|group>
+# можно выбрать отдельные задачи тегами: --tags <tag_name>
+```
+Для поиска ошибок также можно использовать `debug`
+```
+$ ansible all -m debug -a var=ansible_host
+
+# данный пример выведет значения всех переменных ansible_host
+```
+Для динамического создания файлов используются шаблоны jinja2
+```
+# Задача
+
+---
+- name: Configure db hosts
+  hosts: db
+  become: true
+  vars:
+    # Переменная для шаблона
+    mongo_bind_ip: 0.0.0.0
+  tasks:
+    - name: Change mongo config file
+      # Использование шаблона
+      template:
+        src: templates/mongod.conf.j2
+        dest: /etc/mongod.conf
+        mode: 0644 # Права на файл
+```
+```
+# Шаблон
+# mongod.conf.j2
+
+# Where and how to store data.
+storage:
+  dbPath: /var/lib/mongodb
+  journal:
+    enabled: true
+
+# where to write logging data.
+systemLog:
+  destination: file
+  logAppend: true
+  path: /var/log/mongodb/mongod.log
+
+# network interfaces
+net:
+  # Переменные из задания Ansible
+  port: {{ mongo_port | default('27017') }}
+  bindIp: {{ mongo_bind_ip }}
+```
+Для проверки отрисованного шаблона, а также просмотр изменений применить команду
+```
+$ ansible-playbook -C playbook.yml --diff
+```
+Пример вывода
+```
+TASK [Change mongo config file] ******************************************************************************************
+--- before: /etc/mongod.conf
++++ after: /home/slav/.ansible/tmp/ansible-local-7240VlQ881/tmpwntXut/mongod.conf.j2
+@@ -1,16 +1,8 @@
+-# mongod.conf
+-
+-# for documentation of all options, see:
+-#   http://docs.mongodb.org/manual/reference/configuration-options/
+-
+ # Where and how to store data.
+ storage:
+   dbPath: /var/lib/mongodb
+   journal:
+     enabled: true
+-#  engine:
+-#  mmapv1:
+-#  wiredTiger:
+
+ # where to write logging data.
+ systemLog:
+@@ -21,21 +13,5 @@
+ # network interfaces
+ net:
+   port: 27017
+-  bindIp: 127.0.0.1
++  bindIp: 0.0.0.0
+
+-
+-#processManagement:
+-
+-#security:
+-
+-#operationProfiling:
+-
+-#replication:
+-
+-#sharding:
+-
+-## Enterprise-Only Options:
+-
+-#auditLog:
+-
+-#snmp:
+```
+После выполненных заданий могут быть вызваны дополнительные задачи. Отдают репорт об успешном выполнении задачи `notify`, перехватывают `handlers`.
+```
+tasks:
+    - name: Change mongo config file
+      template:
+        src: templates/mongod.conf.j2
+        dest: /etc/mongod.conf
+        mode: 0644 # Права на файл
+      # Уведомить handler с именем `restart mongod`
+      notify: restart mongod
+
+# Выполняют дополнительные задачи при успешном выполнении task
+handlers:
+  - name: restart mongod
+    become: true
+    service: name=mongod state=restarted
+```
+
+## Задание со *
+---
+Для использования Dynamic Inventory для GCP можно использовать плагин Ansible gcp_compute. [Документация](https://docs.ansible.com/ansible/latest/plugins/inventory/gcp_compute.html)
+
+Требования:
+```
+# requirements.txt
+...
+requests>=2.18.4
+google-auth>=1.3.0
+```
+
+Инвентарные файлы должны заканчиваться на `.gcp.(yml|yaml)` или `gcp_compute.(yml|yaml)`
+
+Пример ***inventory*** GCP
+```
+---
+# Имя плагина
+plugin: gcp_compute
+# Управляемые проекты
+projects:
+  - project.id
+# Файл для подключения к консоли GCP
+service_account_file: ~/path/to/key.json
+# Тип аутентификации
+auth_kind: serviceaccount
+# Отображаемая информация о хостах
+hostnames:
+  - name
+# Параметры инстанса добавления в группу
+# Делятся на группы путем поиска строки в Имени
+groups:
+  app: "'-app' in name"
+  db: "'-db' in name"
+# Переменные hostsvars
+compose:
+  # Внешние IP адреса. Используются для подключения к хостам
+  ansible_host: networkInterfaces[0].accessConfigs[0].natIP
+  # Внутренние IP адреса хостов 
+  internal_ip: networkInterfaces[0].networkIP
+
+```
+Для просмотра сформированного `.json` инвентори применить следующую команду
+```
+$ ansible-inventory -i inventory.gcp.yml --list
+```
+Для просмотра сформированного дерева инвентори
+```
+$ ansible-inventory -i inventory.gcp.yml --graph
+
+@all:
+  |--@app:
+  |  |--reddit-app
+  |--@db:
+  |  |--reddit-db
+  |--@ungrouped:
+```
+Переменные `hostvars` можно использовать в ***плейбуках***
+```
+- name: Configure app hosts
+  hosts: app
+  become: true
+  vars:
+    # Использование переменной из hostvars как строку
+    db_host: "{{ hostvars['reddit-db'].internal_ip }}"
+  tasks:
+    - name: Add config file for Puma
+      template:
+        src: templates/db_config.j2
+        dest: /home/appuser/db_config
+        owner: appuser
+        group: appuser
+      notify: reload puma
+
+# Использование переменной из hostvars как список
+#    db_host: 
+#      - "{{ hostvars['reddit-db'].internal_ip }}"
+```
+```
+# Использование Dynamic Inventory по-умолчанию
+# ansible.cfg
+
+[defaults]
+inventory = ./inventory.gcp.yml
+...
+```
+## Самостоятельное задание
+---
+Использования Ansible как провиженер для Packer
+```
+...
+"provisioners": [
+	{
+    "type": "ansible",
+    "playbook_file": "ansible/packer_app.yml"
+	}
+]
+...
+```
+Использование модулей `apt` (устанавливает пакеты), `apt-key` (добавляет ключи репозиториев), `apt-repository` (добавляет репозитории) для установки необходимого ПО
+```
+---
+- name: Install MongoDB
+  hosts: all
+  become: true
+  tasks:
+    - name: Add MongoDB repo key
+      apt_key:
+        # путь до ключа
+        url: https://www.mongodb.org/static/pgp/server-3.2.asc
+        state: present
+    - name: Add MongoDB repo
+      apt_repository:
+        # репозиторий
+        repo: deb http://repo.mongodb.org/apt/ubuntu xenial/mongodb-org/3.2 multiverse
+        state: present
+        # файл с информацией о добавляемом репозитории
+        filename: mongodb-org-3.2.list
+    - name: Install & run MongoDB
+      apt:
+        update_cache: yes
+        # Имя устанавливаемого пакета
+        pkg: mongodb-org
+        state: present 
+      notify: start mongod
+    - name: Enable service Mongod
+      systemd: name=mongod enabled=yes 
+  handlers:
+    - name: start mongod
+      systemd: name=mongod state=started
+```
+```
+---
+- name: Install Ruby & Bundler
+  hosts: all
+  become: true
+  tasks:
+    - name: Using apt
+      apt:
+        # Установка нескольких пакетов
+        name: "{{ packages }}" 
+        state: present       
+      vars:
+        # Переменная со списком пакетов
+        packages:
+          - ruby-full
+          - ruby-bundler
+          - build-essential
 ```
