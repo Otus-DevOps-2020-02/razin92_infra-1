@@ -6,4 +6,4 @@
 *.retry
 *.gcp.yml
 jdauphant.nginx
-
+vault.key
