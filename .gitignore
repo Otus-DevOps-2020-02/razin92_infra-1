@@ -5,3 +5,5 @@
 .terraform/
 *.retry
 *.gcp.yml
+jdauphant.nginx
+
