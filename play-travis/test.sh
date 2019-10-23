@@ -29,7 +29,7 @@ tflint && terraform get && terraform init -backend=false && terraform validate
 echo $end_line
 echo Prod Validate
 cd $terraform_root/prod
-tflint && terraform get && terraform init -backend=false && validate
+tflint && terraform get && terraform init -backend=false && terraform validate
 echo $end_line
 
 # Ansible Check
