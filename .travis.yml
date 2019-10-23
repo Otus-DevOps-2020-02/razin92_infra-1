@@ -2,6 +2,8 @@ dist: trusty
 sudo: required
 language: bash
 before_install:
+- if [ "$TRAVIS_BRANCH" = "master" ]; then sh ./play-travis/requirements.sh; fi
+- if [ "$TRAVIS_BRANCH" = "master" ]; then sh ./play-travis/test.sh; fi
 - curl https://raw.githubusercontent.com/express42/otus-homeworks/2019-08/run.sh |
   bash
 notifications:
