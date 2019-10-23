@@ -1,5 +1,6 @@
 #! /usr/bin/sh
 # Run only from project-root folder
+set -e
 
 root=$PWD
 packer_root=$root/packer
@@ -23,10 +24,10 @@ echo ------------------
 echo Terraform Validate
 echo ------------------
 echo Stage Validate
-cd $terraform_root/stage && tflint && terraform validate
+cd $terraform_root/stage && tflint && terraform get && terraform validate
 echo $end_line
 echo Prod Validate
-cd $terraform_root/prod && tflint && terraform validate
+cd $terraform_root/prod && tflint && terraform get && terraform validate
 echo $end_line
 
 # Ansible Check
