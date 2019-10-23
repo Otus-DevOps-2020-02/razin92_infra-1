@@ -1,4 +1,6 @@
 # razin92_infra
+[![Travis](https://img.shields.io/travis/com/Otus-DevOps-2019-08/razin92_infra?style=flat-square)](https://travis-ci.com/Otus-DevOps-2019-08/razin92_infra)
+
 Репозиторий для работы над домашними заданиями в рамках курса **"DevOps практики и инструменты"**
 
 **Содрежание:**
@@ -1802,4 +1804,48 @@ db
 │   └── test.yml
 └── vars               # Директория для переменных, которые не должны
     └── main.yml       #         переопределяться пользователем
+```
+**Ansible Vault** - инструмент, используемый для шифрования секретов. При выполнении плейбука секреты расшифровываются и могут быть выведены через дебаг. Следует учесть этот момент.
+
+Для шифрования используется строковый ключ. Может храниться в файли и быть указан в конфигурации.
+```
+[defaults]
+...
+vault_password_file = vault.key
+```
+Шифрование
+```
+$ ansible-vault encrypt /path/to/file
+```
+Редактирование
+```
+$ ansible-vault edit /path/to/file
+```
+Рашифрование
+```
+$ ansible-vault decrypt /path/to/file
+```
+## Задание со *
+Аналогично заданию из прошлого ДЗ
+## Задание с **
+Конфигурация TravisCI сохраняется в корне репозитория в файле `.travis.yml`. [Документация](https://docs.travis-ci.com/)
+
+Пример
+```
+# Дистрибутив тестового окружения
+dist: trusty 
+# Указывает необходимость явно вызывать sudo
+sudo: required
+# Язык
+language: bash
+before_install:
+# Скрипт с условием запуска в зависимости от бранча
+- if [ "$TRAVIS_BRANCH" = "master" ]; then sh ./play-travis/requirements.sh; fi
+- if [ "$TRAVIS_BRANCH" = "master" ]; then sh ./play-travis/test.sh; fi
+- curl https://raw.githubusercontent.com/express42/otus-homeworks/2019-08/run.sh |
+  bash
+notifications:
+  slack:
+    rooms:
+      secure: <зашифрованный или открытый ключ>
 ```
