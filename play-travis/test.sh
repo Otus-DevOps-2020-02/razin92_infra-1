@@ -24,10 +24,12 @@ echo ------------------
 echo Terraform Validate
 echo ------------------
 echo Stage Validate
-cd $terraform_root/stage && tflint && terraform get && terraform validate
+cd $terraform_root/stage 
+tflint && terraform get && terraform init -backend=false && terraform validate
 echo $end_line
 echo Prod Validate
-cd $terraform_root/prod && tflint && terraform get && terraform validate
+cd $terraform_root/prod
+tflint && terraform get && terraform init -backend=false && validate
 echo $end_line
 
 # Ansible Check
