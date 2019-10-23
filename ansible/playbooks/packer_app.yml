@@ -5,11 +5,10 @@
   tasks:
     - name: Using apt
       apt:
-        name: "{{ packages }}" 
-        state: present       
+        name: "{{ packages }}"
+        state: present
       vars:
         packages:
           - ruby-full
           - ruby-bundler
           - build-essential
-  
