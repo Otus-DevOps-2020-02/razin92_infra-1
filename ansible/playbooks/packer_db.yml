@@ -16,10 +16,10 @@
       apt:
         update_cache: yes
         pkg: mongodb-org
-        state: present 
+        state: present
       notify: start mongod
     - name: Enable service Mongod
-      systemd: name=mongod enabled=yes 
+      systemd: name=mongod enabled=yes
   handlers:
     - name: start mongod
       systemd: name=mongod state=started

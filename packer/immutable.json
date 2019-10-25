@@ -27,7 +27,7 @@
     "provisioners": [
         {
           "type": "shell",
-          "script": "files/deploy_puma.sh",
+          "script": "packer/files/deploy_puma.sh",
           "execute_command": "sudo {{.Path}}"
         }
     ]

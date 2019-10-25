@@ -1,4 +1,6 @@
 # razin92_infra
+[![Travis](https://img.shields.io/travis/com/Otus-DevOps-2019-08/razin92_infra?style=flat-square)](https://travis-ci.com/Otus-DevOps-2019-08/razin92_infra)
+
 Репозиторий для работы над домашними заданиями в рамках курса **"DevOps практики и инструменты"**
 
 **Содрежание:**
@@ -10,6 +12,7 @@
 5. [ДЗ#7 - Принципы организации инфраструктурного кода и работа над инфраструктурой в команде на примере Terraform](#hw7)
 6. [ДЗ#8 - Управление конфигурацией. Основные DevOps инструменты. Знакомство с Ansible](#hw8)
 7. [ДЗ#9 - Деплой и управление конфигурацией с Ansible](#hw9)
+8. [ДЗ#10 - Ansible: работа с ролями и окружениями](#hw10)
 ---
 <a name="hw3"></a> 
 # Домашнее задание 3
@@ -1621,7 +1624,6 @@ handlers:
 ```
 
 ## Задание со *
----
 Для использования Dynamic Inventory для GCP можно использовать плагин Ansible gcp_compute. [Документация](https://docs.ansible.com/ansible/latest/plugins/inventory/gcp_compute.html)
 
 Требования:
@@ -1707,7 +1709,6 @@ inventory = ./inventory.gcp.yml
 ...
 ```
 ## Самостоятельное задание
----
 Использования Ansible как провиженер для Packer
 ```
 ...
@@ -1768,4 +1769,83 @@ inventory = ./inventory.gcp.yml
           - ruby-full
           - ruby-bundler
           - build-essential
+```
+[Содержание](#top)
+<a name="hw10"></a> 
+# Домашнее задание 10
+## Ansible: работа с ролями и окружениями
+
+***Роли*** - сгруппированные в единое целое описания конфигурации (таски, хендлеры, файлы, шаблоны, переменные).
+
+**Ansible Galaxy** - инструмент для работы с ролями, созданных сообществом
+```
+$ ansible-galaxy -h
+```
+Создание структуры пустой роли
+```
+$ ansible-galaxy init <name>
+```
+Структура роли
+```
+db
+├── defaults           # Переменные по-умолчанию
+│   └── main.yml
+├── files
+├── handlers
+│   └── main.yml
+├── meta               # Информация о роли, создателе и зависимостях
+│   └── main.yml
+├── README.md
+├── tasks              # Директория для задач
+│   └── main.yml
+├── templates
+├── tests
+│   ├── inventory
+│   └── test.yml
+└── vars               # Директория для переменных, которые не должны
+    └── main.yml       #         переопределяться пользователем
+```
+**Ansible Vault** - инструмент, используемый для шифрования секретов. При выполнении плейбука секреты расшифровываются и могут быть выведены через дебаг. Следует учесть этот момент.
+
+Для шифрования используется строковый ключ. Может храниться в файли и быть указан в конфигурации.
+```
+[defaults]
+...
+vault_password_file = vault.key
+```
+Шифрование
+```
+$ ansible-vault encrypt /path/to/file
+```
+Редактирование
+```
+$ ansible-vault edit /path/to/file
+```
+Рашифрование
+```
+$ ansible-vault decrypt /path/to/file
+```
+## Задание со *
+Аналогично заданию из прошлого ДЗ
+## Задание с **
+Конфигурация TravisCI сохраняется в корне репозитория в файле `.travis.yml`. [Документация](https://docs.travis-ci.com/)
+
+Пример
+```
+# Дистрибутив тестового окружения
+dist: trusty 
+# Указывает необходимость явно вызывать sudo
+sudo: required
+# Язык
+language: bash
+before_install:
+# Скрипт с условием запуска в зависимости от бранча
+- if [ "$TRAVIS_BRANCH" = "master" ]; then sh ./play-travis/requirements.sh; fi
+- if [ "$TRAVIS_BRANCH" = "master" ]; then sh ./play-travis/test.sh; fi
+- curl https://raw.githubusercontent.com/express42/otus-homeworks/2019-08/run.sh |
+  bash
+notifications:
+  slack:
+    rooms:
+      secure: <зашифрованный или открытый ключ>
 ```
