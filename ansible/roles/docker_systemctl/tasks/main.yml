@@ -1,0 +1,14 @@
+---
+# tasks file for docker_systemctl
+
+- name: Install systemctl when docker
+  copy:
+    src: systemctl.py
+    dest: /bin/systemctl
+  when: "ansible_virtualization_type == 'docker'"
+
+- name: Create working directory  
+  file:
+    name: /run/systmd/system/
+    state: directory
+  when: "ansible_virtualization_type == 'docker'"
