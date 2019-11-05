@@ -2,5 +2,5 @@
 - name: Configure docker
   hosts: all
   become: true
-  roles: 
+  roles:
     - docker_systemctl
