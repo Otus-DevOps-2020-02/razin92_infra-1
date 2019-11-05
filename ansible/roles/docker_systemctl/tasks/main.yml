@@ -7,7 +7,7 @@
     dest: /bin/systemctl
   when: "ansible_virtualization_type == 'docker'"
 
-- name: Create working directory  
+- name: Create working directory
   file:
     name: /run/systmd/system/
     state: directory
