@@ -2043,4 +2043,75 @@ def test_listening_port(host):
 }
 ```
 ## Задание со *
-в работе....
+Необходимые пакеты:
+```
+ansible==2.9.0
+molecule>=2.6
+ansible-lint>=4.1.0
+testinfra>=1.10
+apache-libcloud>=0.20.0
+```
+Установка драйвера GCE для molecule
+```
+pip install 'molecule[gce]'
+```
+Необходимые переменные для работы GCE
+```
+# Переменные окружения (глобальные)
+GCE_SERVICE_ACCOUNT_EMAIL
+GCE_CREDENTIALS_FILE
+GCE_PROJECT_ID
+```
+Переменные кастомизации инстанса задаются в блоке `platforms` файла `molecule.yml`
+```
+# Пример
+platforms:
+  - name: instance-travis
+    zone: europe-west1-b
+    machine_type: f1-micro
+    image: ubuntu-1604-xenial-v20170919
+```
+Шаги для интеграции Travis CI (взято из примера [Artemmkin](https://gist.github.com/Artemmkin/e1c845e96589d5d71476f57ed931f1ac))
+```
+wget https://raw.githubusercontent.com/vitkhab/gce_test/c98d97ea79bacad23fd26106b52dee0d21144944/.travis.yml
+# генерируем ключ для подключения по SSH
+ssh-keygen -t rsa -f google_compute_engine -C 'travis' -q -N ''
+# Создаем ключ в метадате проекта infra в GCP
+
+# Должен быть предварительно создан сервисный аккаунт и скачаны креды (credentials.json)
+# Должна быть предварительно подключена данная репа в тревисе
+travis encrypt GCE_SERVICE_ACCOUNT_EMAIL='ci-test@infra-179032.iam.gserviceaccount.com' --add
+# Не рекомендуется выполнять следующий шаг, так как пушится абсолютный локальный путь. Оставлен для примера
+travis encrypt GCE_CREDENTIALS_FILE="$(pwd)/credentials.json" --add
+travis encrypt GCE_PROJECT_ID='infra-179032' --add
+
+# шифруем файлы
+tar cvf secrets.tar credentials.json google_compute_engine
+# Интеграция с travis-ci.org
+travis login
+# Альтернативно с travis-ci.com
+# travis login --pro
+travis encrypt-file secrets.tar --add
+
+# пушим и проверяем изменения
+git commit -m 'Added Travis integration'
+git push
+```
+Так как в Travis CI секреты отправляются в зашифрованном виде и в архиые, необходимо расположить их по нужным местам
+```
+# .travis.yml
+...
+- tar xvf secrets.tar
+# GCE ищет приватный SSH-ключ по этому пути
+- mv google_compute_engine ~/.ssh/google_compute_engine
+# Расположение сервисных аутентификационных данных GCE
+- export GCE_CREDENTIALS_FILE="$(pwd)/credentials.json"
+```
+Для тестирования роли использовать следующие шаги
+```
+- pip install -r requirements.txt
+- molecule create
+- molecule converge
+- molecule verify
+- molecule destroy
+```
