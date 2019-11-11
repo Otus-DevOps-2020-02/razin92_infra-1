@@ -13,6 +13,7 @@
 6. [ДЗ#8 - Управление конфигурацией. Основные DevOps инструменты. Знакомство с Ansible](#hw8)
 7. [ДЗ#9 - Деплой и управление конфигурацией с Ansible](#hw9)
 8. [ДЗ#10 - Ansible: работа с ролями и окружениями](#hw10)
+9. [ДЗ#11 - Разработка и тестирование Ansible ролей и плейбуков](#hw11)
 ---
 <a name="hw3"></a> 
 # Домашнее задание 3
@@ -1848,4 +1849,269 @@ notifications:
   slack:
     rooms:
       secure: <зашифрованный или открытый ключ>
+```
+<a name="hw11"></a>
+[Содержание](#top)
+# Домашнее задание 11
+## Разработка и тестирование Ansible ролей и плейбуков
+
+**VirtualBox**
+
+**!** Не устанавливать в виртуальную среду внутри виртуальной машины. Для нормальной работы требует:
+- Intel VT-x/EPT или AMD-V/RVI
+- Счетчики производительности виртуализации процессора
+
+Работает внутри виртуальной машины VMware Workstation.
+
+**Vagrant**
+
+- [Базовые команды Vagrant](https://gist.github.com/wpscholar/a49594e2e2b918f4d0c4)
+- [Поддерживаемые провайдеры](https://www.vagrantup.com/docs/providers/)
+- [Установка](https://www.vagrantup.com/downloads.html)
+- [Конфигурация](https://www.vagrantup.com/docs/vagrantfile/)
+- [Репозиторий Box-образов](https://app.vagrantup.com)
+
+Конфигурация хранится в `Vagrantfile`. Примеры:
+```
+Vagrant.configure("2") do |config|
+
+  # Указание провайдера и его настроек
+  config.vm.provider :virtualbox do |v|
+    # Кол-во оперативной памяти VM
+    v.memory = 1024
+  end
+
+  # Описание и настройки VM
+  config.vm.define "dbserver" do |db|
+    # Наименование образа
+    db.vm.box = "ubuntu/xenial64"
+    db.vm.hostname = "dbserver"
+    db.vm.network :private_network, ip: "10.10.10.10"
+
+    # Провиженеры и их настройки
+    db.vm.provision "ansible" do |ansible|
+      ansible.playbook = "playbooks/site.yml"
+      ansible.groups = {
+        "db" => ["dbserver"],
+        # Переменные для Ansible
+        "db:vars" => {"mongo_bind_ip" => "0.0.0.0"}
+      }
+      end
+  end
+end
+```
+Путь до рабочих папок Vagrant-a
+```
+# В директории, где находится Vagrantfile
+.vagrant/
+# Автоматически сгенерированный инвентори Ansible
+.vagrant/provisioners/ansible/inventory/vagrant_ansible_inventory
+```
+**Ansible**
+
+Установка Python, если его нет на целевой машине
+```
+---
+- name: Check && install python
+  hosts: all
+  become: true
+  # Пропуск сбора фактов, т.к. требует Python
+  gather_facts: False
+
+  tasks:
+    - name: Install python for Ansible
+      # Исполнение команд, используя shell
+      raw: test -e /usr/bin/python || (apt -y update && apt install -y python-minimal)
+      changed_when: False
+```
+Запуск задания в зависимости от типа виртуализации
+```
+# Модификация systemctl внутри Docker-a
+# так как он не поддерживает его "из коробки"
+---
+- name: Install systemctl when docker
+  copy:
+    src: systemctl.py
+    dest: /bin/systemctl
+  # Запуск, если соблюдено условие
+  when: "ansible_virtualization_type == 'docker'"
+```
+Просмотр всех переменных Ansible
+```
+$ ansible all -m setup
+```
+! При большом количестве заданий рекомендуется группировать их и распределять в отдельные файлы. При групперовке при помощи `include` важен порядок. Задачи выполняются по порядку сверху вниз.
+
+Дебаг сообщения. Отображаются перед выполнением заданий
+```
+- name: Show info about the env this host belongs to
+  debug:
+    msg: "This host is in {{ env }} environment!!!"
+```
+## Задание со *
+При создании VM с помощью Vagrant не настраивался Nginx.
+
+Конфиг для его работы:
+```
+...
+    app.vm.provision "ansible" do |ansible|
+      ansible.playbook = "playbooks/site.yml"
+      ansible.groups = {
+        "app" => ["appserver"],
+        "app:vars" => {"db_host" => "10.10.10.10"}
+      }
+      # Дополнительные настройки Nginx и пользователя
+      ansible.extra_vars = {
+        "deploy_user" => "vagrant",
+        "nginx_sites" => { "default" => [
+          'listen 80',
+          'server_name "reddit"',
+          'location / {
+            proxy_pass http://127.0.0.1:9292;
+          }'
+        ]}
+      }
+      end
+    end
+...
+```
+**Molecule и Testinfra**
+
+- [Документация Molecule](https://molecule.readthedocs.io/en/stable/)
+- [Документация Testinfra](https://testinfra.readthedocs.io/en/latest/)
+
+Используются для локального тестирования ролей Ansible.
+
+Зависимости
+```
+molecule>=2.6
+testinfra>=1.10
+python-vagrant>=0.5.15
+``` 
+Создание сценария и инициализация Molecule
+```
+$ molecule init scenario --scenario-name <name> -r <role_name> -d vagrant
+# -d - Драйвер
+```
+Путь до тестов
+```
+molecule/<scenario_name>/tests/test_default.py
+```
+Путь до описания тестовой машины
+```
+molecule/<scenario_name>/molecule.yml
+```
+Создание тестовой машины
+```
+$ molecule create
+```
+Список созданных инстансов
+```
+$ molecule list
+```
+Подключение к инстансу по SSH
+```
+$ molecule login -h instance
+```
+Путь до плейбука для тестируемой роли
+```
+molecule/<scenario_name>/playbook.yml
+```
+Применение конфигурации (провиженинг)
+```
+$ molecule converge
+```
+Запуск тестов
+```
+$ molecule verify 
+```
+### Самостоятельное задание
+Проверка портов при помощи [модулей](http://testinfra.readthedocs.io/en/latest/modules.html) Testinfra
+```
+def test_listening_port(host):
+    assert host.socket("tcp://0.0.0.0:27017").is_listening
+```
+Указание дополнительных аргументов и переменных окружения Ansible в конфигурации Packer
+```
+{
+	"type": "ansible",
+	"playbook_file": "ansible/playbooks/packer_app.yml",
+  # Переменные окружения
+	"ansible_env_vars": ["ANSIBLE_ROLES_PATH={{ pwd }}/ansible/roles"],
+  # Дополнительные аргументы
+	"extra_arguments": ["--tags", "ruby"]
+}
+```
+## Задание со *
+Необходимые пакеты:
+```
+ansible==2.9.0
+molecule>=2.6
+ansible-lint>=4.1.0
+testinfra>=1.10
+apache-libcloud>=0.20.0
+```
+Установка драйвера GCE для molecule
+```
+pip install 'molecule[gce]'
+```
+Необходимые переменные для работы GCE
+```
+# Переменные окружения (глобальные)
+GCE_SERVICE_ACCOUNT_EMAIL
+GCE_CREDENTIALS_FILE
+GCE_PROJECT_ID
+```
+Переменные кастомизации инстанса задаются в блоке `platforms` файла `molecule.yml`
+```
+# Пример
+platforms:
+  - name: instance-travis
+    zone: europe-west1-b
+    machine_type: f1-micro
+    image: ubuntu-1604-xenial-v20170919
+```
+Шаги для интеграции Travis CI (взято из примера [Artemmkin](https://gist.github.com/Artemmkin/e1c845e96589d5d71476f57ed931f1ac))
+```
+wget https://raw.githubusercontent.com/vitkhab/gce_test/c98d97ea79bacad23fd26106b52dee0d21144944/.travis.yml
+# генерируем ключ для подключения по SSH
+ssh-keygen -t rsa -f google_compute_engine -C 'travis' -q -N ''
+# Создаем ключ в метадате проекта infra в GCP
+
+# Должен быть предварительно создан сервисный аккаунт и скачаны креды (credentials.json)
+# Должна быть предварительно подключена данная репа в тревисе
+travis encrypt GCE_SERVICE_ACCOUNT_EMAIL='ci-test@infra-179032.iam.gserviceaccount.com' --add
+# Не рекомендуется выполнять следующий шаг, так как пушится абсолютный локальный путь. Оставлен для примера
+travis encrypt GCE_CREDENTIALS_FILE="$(pwd)/credentials.json" --add
+travis encrypt GCE_PROJECT_ID='infra-179032' --add
+
+# шифруем файлы
+tar cvf secrets.tar credentials.json google_compute_engine
+# Интеграция с travis-ci.org
+travis login
+# Альтернативно с travis-ci.com
+# travis login --pro
+travis encrypt-file secrets.tar --add
+
+# пушим и проверяем изменения
+git commit -m 'Added Travis integration'
+git push
+```
+Так как в Travis CI секреты отправляются в зашифрованном виде и в архиые, необходимо расположить их по нужным местам
+```
+# .travis.yml
+...
+- tar xvf secrets.tar
+# GCE ищет приватный SSH-ключ по этому пути
+- mv google_compute_engine ~/.ssh/google_compute_engine
+# Расположение сервисных аутентификационных данных GCE
+- export GCE_CREDENTIALS_FILE="$(pwd)/credentials.json"
+```
+Для тестирования роли использовать следующие шаги
+```
+- pip install -r requirements.txt
+- molecule create
+- molecule converge
+- molecule verify
+- molecule destroy
 ```
