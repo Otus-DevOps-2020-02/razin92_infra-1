@@ -1,0 +1,10 @@
+---
+# handlers file for app
+- name: enable puma
+  systemd: name=puma enabled=yes
+
+- name: start puma
+  systemd: name=puma state=started
+
+- name: reload puma
+  systemd: name=puma state=restarted

@@ -1,0 +1,36 @@
+{
+    "variables": {
+	"project_id": null,
+	"source_image_family": null,
+	"machine_type": "f1-micro",
+	"disk_type": "pd-standard",
+	"description": "app image",
+	"network": "default"
+    },
+    "builders": [
+	{
+	"type": "googlecompute",
+	"project_id": "{{ user `project_id` }}",
+	"image_name": "reddit-app-base-{{timestamp}}",
+	"image_family": "reddit-app-base",
+	"source_image_family": "{{ user `source_image_family` }}",
+	"zone": "europe-west3-a",
+	"ssh_username": "appuser",
+	"machine_type": "{{ user `machine_type` }}",
+	"disk_size": 10,
+	"disk_type": "{{ user `disk_type` }}",
+	"image_description": "{{ user `description` }}",
+	"network": "{{ user `network` }}",
+	"tags": ["puma-server"]
+	}
+    ],
+    "provisioners": [
+	{
+	"type": "ansible",
+	"playbook_file": "ansible/playbooks/packer_app.yml",
+	"ansible_env_vars": ["ANSIBLE_ROLES_PATH={{ pwd }}/ansible/roles"],
+	"extra_arguments": ["--tags", "ruby"]
+	}
+    ]
+}
+

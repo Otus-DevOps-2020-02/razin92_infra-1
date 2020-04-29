@@ -1,0 +1,11 @@
+dist: trusty
+sudo: required
+language: bash
+before_install:
+- if [ "$TRAVIS_BRANCH" = "master" ]; then sh ./play-travis/requirements.sh; fi
+- if [ "$TRAVIS_BRANCH" = "master" ]; then sh ./play-travis/test.sh; fi
+- curl https://raw.githubusercontent.com/express42/otus-homeworks/2019-08/run.sh |
+  bash
+notifications:
+  slack:
+    secure: Su2/q+lcyEdXD2ZXCkAPmg7iUNw2Bse5JwFQo7ljoh27eswDE03gS9tHuF0XU5v7TNxmD//dL86oMrExPU7lDDcHVuTkA2vkQGU2Fo4r/463N18e+SLB4I1MCUzBGMz/EC+ur8SIVDKWoUfj0NaJxlxJ1fbdlThCDb1qVl4vG0+PmHmCypTOYewwXIu4hkK6AItGAHTmTtrtU/4Fxh8vGCG6Luk/GIcWM1d9bsq2selSOcAe6NxIEHB8Th4dbUwBSYTwjA0Aon2ZieUX5jmC9E0/aXyXgs2nQqDadMI6D61EJqjQqCDy/ki1Kq+dXt8J4wQQutX3Tla9xPqRBPTAwAyoKR1nVgTcbWQOxgW0DXKYFot9uonSoy4tOl2dUNurNyQ83GVIFJmXei6Q9UROVZvN0F889rAX8mLDs4+Vv9fijZvH3NBI64CM/BSLQgmpxC6/JuN9C3KK2lfFlgBesviaJrFgAGKXFaBrUg+XP9jPnRyAvTb/1qyw/mdjVphD0pfCgQikh4zke635ZQGeAdqUqh35stQqFfUkLvR3XMIDnnkc2PYFnE0dspCfFpKk+/+8/596++Y5t5rrWSrxpBDEkLY5o0+FX1G9XOcKYf/R+g92TzOcrbiOo30LCw+waWXJQ8wGYtFHoHBi39jvJkudWDnzJZSgEjyXp0R0uZE=

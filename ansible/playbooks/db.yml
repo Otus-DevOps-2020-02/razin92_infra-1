@@ -1,0 +1,7 @@
+---
+- name: Configure db hosts
+  hosts: db
+  become: true
+
+  roles:
+    - db
